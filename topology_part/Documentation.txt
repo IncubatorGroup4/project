@@ -1,0 +1,40 @@
+
+####Instructions####
+
+********Network configuration********
+
+1) The debian machine should be connected to R1 through an ethernet link. 
+2) The default gateway of the debian machine is the IP address of the derectly connected router.
+3) All the routers should use inly the serial connections to access each other (no management interfaces)
+4) the following config should be done on each routerin the global config mode 
+	Router(config)#snmp-server community public RO
+   => the community  string here is "public" (it's case sensitive please pay attention to that ^^)
+
+
+
+********Debian 7 Machine********
+
+1) Open a regular Linux terminal
+2) Go to the folder containing the script, using cd /folder_path
+3) Change the permissions on the script "chmod 755 OSPF_SNMP.py"
+4) Enter "sudo python OSPF_SNMP.py" and the password for the account
+
+5) Necessary Python packages (If you use the machine from gns3 academy's course, they are all already installed on it :D)
+https://pypi.python.org/pypi/setuptools => Makes python files packaging easier.
+https://pypi.python.org/pypi/matplotlib => Helps creating plots, we'll need it in displaying the topology graphically.
+https://pypi.python.org/pypi/pysnmp => Helps with SNMP implementation, so we discover the whole network and retrieve information.
+https://pypi.python.org/pypi/colorama => Helps with terminal text coloring :)
+
+
+
+####Script understanding####
+
+Importing modules -> Asking input from the user -> checking the IP validity -> checking the IP reachability -> Performing SNMP GETNEXT operations
+-> Extracting teh necessary data and adding it to a dictionnaly -> Eliminating duplicate entries -> getting the final list of OSPF devices -> displaying 
+it according to the user's preferences. 
+
+
+The CSV file is saved in the same directory as our script.
+The topology is pumped out in the screen and we can save it as a png file. 
+
+The end :D
