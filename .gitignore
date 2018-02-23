@@ -1,5 +1,4 @@
 results/*
-.gitignore
-topology_part/
+topology_part/*
 Device_info.zip
-Device_info/
+Device_info/*
