@@ -25,38 +25,35 @@ init()
 try:
 	import netifaces
 except ImportError:
-	print Fore.RED + Style.BRIGHT + "\n* Module netifaces needs to be installed on your system."
-	print "* Download it from: https://pypi.python.org/pypi/netifaces\n" + Fore.WHITE + Style.BRIGHT
+	print Fore.RED + Style.BRIGHT + "* Module" + Fore.YELLOW + Style.BRIGHT + " netifaces" + Fore.RED + Style.BRIGHT + " needs to be installed on your system."
+	print "* Download it from: " + Fore.GREEN + Style.BRIGHT + "https://pypi.python.org/pypi/netifaces\n" + Fore.WHITE + Style.BRIGHT + "\n"
 	sys.exit()
 
 try:
 	import ipaddress
 except ImportError:
-	print Fore.RED + Style.BRIGHT + "\n* Module ipaddresse needs to be installed on your system."
-	print "* Download it from: https://pypi.python.org/pypi/ipaddress\n" + Fore.WHITE + Style.BRIGHT
+	print Fore.RED + Style.BRIGHT + "* Module" + Fore.YELLOW + Style.BRIGHT + " ipaddress" + Fore.RED + Style.BRIGHT + " needs to be installed on your system."
+	print "* Download it from: " + Fore.GREEN + Style.BRIGHT + "https://pypi.python.org/pypi/ipaddress\n" + Fore.WHITE + Style.BRIGHT + "\n"
 	sys.exit()
 
 try:
 	from pprint import pprint
-except ImportError as err:
-	print Fore.RED + Style.BRIGHT + "\n* Problem: " + Fore.YELLOW + str(err)
-	print Fore.RED + Style.BRIGHT + "* Module pprint needs to be installed on your system."
+except ImportError:
+	print Fore.RED + Style.BRIGHT + "* Module" + Fore.YELLOW + Style.BRIGHT + " pprint" + Fore.RED + Style.BRIGHT + " needs to be installed on your system."
 	print "* Download it from: " + Fore.GREEN + Style.BRIGHT + "https://pypi.python.org/pypi/pprint" + Fore.WHITE + Style.BRIGHT + "\n"
 	sys.exit()
 
 try:
 	import textfsm
-except ImportError as err:
-	print Fore.RED + Style.BRIGHT + "\n* Problem: " + Fore.YELLOW + str(err)
-	print Fore.RED + Style.BRIGHT + "* Module textfsm needs to be installed on your system."
+except ImportError:
+	print Fore.RED + Style.BRIGHT + "* Module" + Fore.YELLOW + Style.BRIGHT + " textfsm" + Fore.RED + Style.BRIGHT + " needs to be installed on your system."
 	print "* Download it from: " + Fore.GREEN + Style.BRIGHT + "https://pypi.python.org/pypi/textfsm" + Fore.WHITE + Style.BRIGHT + "\n"
 	sys.exit()
 
 try:
 	import paramiko
-except ImportError as err:
-	print Fore.RED + Style.BRIGHT + "\n* Problem: " + Fore.YELLOW + str(err)
-	print Fore.RED + Style.BRIGHT + "* Module paramiko needs to be installed on your system."
+except ImportError:
+	print Fore.RED + Style.BRIGHT + "* Module" + Fore.YELLOW + Style.BRIGHT + " paramiko" + Fore.RED + Style.BRIGHT + " needs to be installed on your system."
 	print "* Download it from: " + Fore.GREEN + Style.BRIGHT + "https://pypi.python.org/pypi/paramiko" + Fore.WHITE + Style.BRIGHT + "\n"
 	sys.exit()
 
@@ -284,14 +281,13 @@ def chech_loc_ifaces():
 
 def open_ssh_conn(ip, pswd_list):
 	"""Create SSH connection to the device with a given ip address. Second argument is a password list.
-	Returns paramiko.SSHClient() object if successful or False if not"""
+	Returns True if successfully create paramiko.SSHClient() object or False if not"""
 
 	ssh_check = False
 
 	username = "admin"
 
 	#Dictionary which contain management information (username, password and management ip) for each device
-	global dev_manage 
 	dev_manage = {}
 
 	for pswd in pswd_list:
@@ -321,26 +317,43 @@ def open_ssh_conn(ip, pswd_list):
 
 	#Evaluate ssh_check flag
 	if ssh_check == True:
+		#Create a shell to execute commands
+		conn =  ssh_client.invoke_shell()
+
+		conn.send("terminal length 0\n")
+
+		conn.send("show ip interface brief\n")
+		time.sleep(1)
+
+		conn.send("show running-config | include hostname\n")
+		time.sleep(1)
+
+		output = conn.recv(1000)
+
 		dev_manage["username"] = username
 		dev_manage["password"] = pswd
 		dev_manage["manage_ip"] = ip
-		return ssh_client
+		dev_manage["ssh_client"] = ssh_client
+		dev_manage["shell"] = conn
+
+		#Add dev_manage dict to a list
+		dev_manage_info.append(dev_manage)
+
+		#Create a template object for "show ip int brief" command
+		sh_ip_int_b = textfsm.TextFSM(open(r"./templates/sh_ip_int_b.textfsm"))
+		sh_ip_int_b_res = sh_ip_int_b.ParseText(output)
+
+		#Find out unqueried ip addresses (remove queried ip addresses from the available_ips list)
+		for line in sh_ip_int_b_res:
+			nbr_ip = line[1]
+			if nbr_ip in available_ips:
+				available_ips.remove(nbr_ip)
 	else:
-		#print "\n* Password is not found for a device with ip  " + Fore.YELLOW + Style.BRIGHT + ip
-		#print Fore.WHITE + Style.BRIGHT + "\n"
-		return False
+		print "\n* Password is not found for a device with ip  " + Fore.YELLOW + Style.BRIGHT + ip
+		print Fore.WHITE + Style.BRIGHT + "\n"
 
-def gather_info(ssh_client):
+def gather_info(ssh_client, conn):
 	"""Gather all the neccessary information for a device. Accepts paramiko.SSHClient() object"""
-
-	#Create a shell to execute commands
-	conn =  ssh_client.invoke_shell()
-
-	conn.send("terminal length 0\n")
-	time.sleep(1)
-
-	conn.send("show ip interface brief\n")
-	time.sleep(1)
 
 	conn.send("show running-config | include hostname\n")
 	time.sleep(1)
@@ -351,31 +364,33 @@ def gather_info(ssh_client):
 
 	############################
 
-	output = conn.recv(65535)
+	output = conn.recv(1000)
 
 	#Find device hostname
 	dev_hostname = re.search(r"hostname (\S+)\s*", output)
 	if dev_hostname != None:
 		hostname = dev_hostname.group(1)
-
-	#Create a template object for "show ip int brief" command
-	sh_ip_int_b = textfsm.TextFSM(open(r"./templates/sh_ip_int_b.textfsm"))
-	sh_ip_int_b_res = sh_ip_int_b.ParseText(output)
-
-	#Add to a dictionary hostname
-	dev_manage["hostname"] = hostname
-
-	#Add dev_manage dict to a list
-	dev_manage_info.append(dev_manage)
-
-	#Find out unqueried ip addresses (remove queried ip addresses from the available_ips list)
-	for line in sh_ip_int_b_res:
-		nbr_ip = line[1]
-		if nbr_ip in available_ips:
-			available_ips.remove(nbr_ip)
+		#Add to a dictionary hostname
+		for dev in dev_manage_info:
+			if dev["ssh_client"] == ssh_client:
+				dev["hostname"] = hostname
 
 	#Close SSH session
 	ssh_client.close()
+
+def create_ssh_threads(ssh_list):
+	"""Creates threads for each ssh_client in ssh_list."""
+
+	threads = []
+	for dev in ssh_list:
+		th = threading.Thread(target = gather_info, args = (dev["ssh_client"], dev["shell"]))
+		th.start()
+		threads.append(th)
+		time.sleep(1)
+
+	for th in threads:
+		th.join()
+
 
 def write_cred_csv():
 	"""Write credentials and management ips for each device to the file results/dev_credentials.csv"""
@@ -392,10 +407,10 @@ def write_cred_csv():
 
 	output_file = open(filename, "w")
 
-	print >>output_file, "Device,Username,Password,Management IP"
+	print >>output_file, "Device;Username;Password;Management IP"
 
 	for each_dict in dev_manage_info:
-		print >>output_file, "%s,%s,%s,%s" % (each_dict["hostname"], each_dict["username"], each_dict["password"], each_dict["manage_ip"])
+		print >>output_file, "%s;%s;%s;%s" % (each_dict["hostname"], each_dict["username"], each_dict["password"], each_dict["manage_ip"])
 
 	output_file.close()
 
@@ -484,18 +499,20 @@ if __name__ == "__main__":
 				break
 			else:
 				ip = available_ips[0]
-				client = open_ssh_conn(ip, pass_list)
-				if client:
-					gather_info(client)
-				else:
-					available_ips.remove(ip)
+				open_ssh_conn(ip, pass_list)
 		
 		print Fore.GREEN + Style.BRIGHT + "\n* Done!"
+		pprint(dev_manage_info)
+		print "\n"
+
+		create_ssh_threads(dev_manage_info)
+		pprint(dev_manage_info)
+
 
 		#print "\n Device  credentials: "
 		#pprint(dev_manage_info)
 
-		write_cred_csv()
+		#write_cred_csv()
 
 		#Deinitialise colorama
 		deinit()
