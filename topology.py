@@ -57,6 +57,19 @@ except ImportError:
 	print "* Download it from: " + Fore.GREEN + Style.BRIGHT + "https://pypi.python.org/pypi/paramiko" + Fore.WHITE + Style.BRIGHT + "\n"
 	sys.exit()
 
+try:
+	import matplotlib.pyplot as matp
+except ImportError:
+	print Fore.RED + Style.BRIGHT + "* Module" + Fore.YELLOW + Style.BRIGHT + " matplotlib" + Fore.RED + Style.BRIGHT + " needs to be installed on your system."
+	print "* Download it from: " + Fore.GREEN + Style.BRIGHT + "https://pypi.python.org/pypi/matplotlib" + Fore.WHITE + Style.BRIGHT + "\n"
+	sys.exit()
+
+try:
+	import networkx as nx
+except ImportError:
+	print Fore.RED + Style.BRIGHT + "* Module" + Fore.YELLOW + Style.BRIGHT + " networkx" + Fore.RED + Style.BRIGHT + " needs to be installed on your system."
+	print "* Download it from: " + Fore.GREEN + Style.BRIGHT + "https://pypi.python.org/pypi/networkx" + Fore.WHITE + Style.BRIGHT + "\n"
+	sys.exit()
 
 #Create all the necessary variables
 
@@ -65,6 +78,23 @@ available_ips = []
 
 #List (of dictionaries) of management information for each device
 dev_manage_info = []
+
+#List with cdp information for each device; "show cdp neighbors detail" command
+dev_cdp_list = []
+
+#List with general information for each device (list of dictionaries); "show version" command
+dev_ver_info = []
+
+
+#DICTIONARIES
+#Module information for each device (dictionary(key = hostname) of lists of dictionaries(each module))
+dev_module_info = {}
+
+#For topology generation
+neighborship_dict = {}
+
+#Interface information for each device (dict(key = hostname) of lists of dictionaries(each interface))
+dev_iface_info = {}
 
 
 def ip_is_valid(file):
@@ -325,9 +355,6 @@ def open_ssh_conn(ip, pswd_list):
 		conn.send("show ip interface brief\n")
 		time.sleep(1)
 
-		conn.send("show running-config | include hostname\n")
-		time.sleep(1)
-
 		output = conn.recv(1000)
 
 		dev_manage["username"] = username
@@ -360,11 +387,21 @@ def gather_info(ssh_client, conn):
 
 	############################
 
-	#Add your commands here
+	conn.send("show diag\n")
+	time.sleep(1)
+
+	conn.send("show cdp neighbors detail\n")
+	time.sleep(1)
+
+	conn.send("show interfaces\n")
+	time.sleep(2)
+
+	conn.send("show version\n")
+	time.sleep(1)
 
 	############################
 
-	output = conn.recv(1000)
+	output = conn.recv(65535)
 
 	#Find device hostname
 	dev_hostname = re.search(r"hostname (\S+)\s*", output)
@@ -374,6 +411,118 @@ def gather_info(ssh_client, conn):
 		for dev in dev_manage_info:
 			if dev["ssh_client"] == ssh_client:
 				dev["hostname"] = hostname
+
+	#Create a template object for "show interfaces" command
+	sh_ifaces = textfsm.TextFSM(open(r"./templates/sh_interfaces.textfsm"))
+	sh_ifaces_res = sh_ifaces.ParseText(output)
+
+	#Template list for iface_dict dictionary
+	ifaces_temp = ["iface", "phy_st", "prot_st", "description", "ip_addr", "mtu", "bandwidth"]
+
+	#Create a list to contain all interfaces for a device
+	ifaces = []
+	for value in sh_ifaces_res:
+		#Create dictionary for each interface on a device
+		iface_dict = {key:value[index] for index, key in enumerate(ifaces_temp)}
+		ifaces.append(iface_dict)
+
+	#Add list with interfaces to a dictionary
+	dev_iface_info[hostname] = ifaces
+
+	#Create a template object for "show diag" command(search for adapter modules)
+	sh_diag_ad = textfsm.TextFSM(open(r"./templates/sh_diag_slots.textfsm"))
+	sh_diag_ad_res = sh_diag_ad.ParseText(output)
+
+	#Template list for ad_modules dictionary
+	ad_mod_temp = ["slot_no", "module_name", "port_no", "status", "insert_time", "serial_no", "hard_rev", "pid"]
+
+	#Create list to contain all adapter modules for a device
+	adapter_modules = []
+	for value in sh_diag_ad_res:
+		#Create a dictionary for each adapter module on a device
+		ad_modules = {key:value[index] for index, key in enumerate(ad_mod_temp)}
+		adapter_modules.append(ad_modules)
+
+
+	#Create a template object for "show diag" command(search for wic modules)
+	sh_diag_wic = textfsm.TextFSM(open(r"./templates/sh_diag_wics.textfsm"))
+	sh_diag_wic_res = sh_diag_wic.ParseText(output)
+
+	#Template list for w_modules dictionary
+	wic_mod_temp = ["slot_no", "module_name", "hard_rev", "serial_no", "pid"]
+
+	#Create list to contain all WIC modules for a device
+	wic_modules = []
+	for value in sh_diag_wic_res:
+		#Create dictionary for each WIC module on a device
+		w_modules = {key:value[index] for index, key in enumerate(wic_mod_temp)}
+		wic_modules.append(w_modules)
+
+	#Add adapter and WIC modules for a device to the dictionary
+	dev_module_info[hostname] = [adapter_modules, wic_modules]
+
+	#Collecting cdp information
+	#Create a template object for "show cdp neighbors detail" command
+	sh_cdp_nbr_d = textfsm.TextFSM(open(r"./templates/sh_cdp_nbr_d.textfsm"))
+	sh_cdp_nbr_d_res = sh_cdp_nbr_d.ParseText(output)
+
+	#Template list for cdp_nbr doctionary
+	cdp_nbr_temp = ["nbr_id", "nbr_domain", "nbr_ip", "host_iface", "nbr_iface"]
+
+	for value in sh_cdp_nbr_d_res:
+		#Create dictionary to contain neighbor information for a device
+		cdp_nbr = {key:value[index] for index, key in enumerate(cdp_nbr_temp)}
+		cdp_nbr["host_id"] = hostname
+
+		#Add cdp info for a device to a list
+		dev_cdp_list.append(cdp_nbr)
+
+
+	#Template list for sh_ver_dict doctionary
+	sh_ver_temp = ["sys_type", "hard_platform", "soft_name", "soft_ver", "hostname", "uptime",
+					"image", "proc_type", "proc_freq", "ram_mem", "shared_mem", "nvram", "conf_reg"]
+
+	#Create a template object for "show version" command
+	sh_ver = textfsm.TextFSM(open(r"./templates/sh_ver.textfsm"))
+	sh_ver_res = sh_ver.ParseText(output)
+
+	#Create a dictionary to contain general info for a device
+	sh_ver_dict = {key:sh_ver_res[0][index] for index, key in enumerate(sh_ver_temp)}
+
+	#Search for a device uptime from the output
+	uptime_value_list = sh_ver_dict["uptime"].split(", ")
+
+	#Getting the device uptime in seconds
+	y_sec = 0
+	w_sec = 0
+	d_sec = 0
+	h_sec = 0
+	m_sec = 0
+
+	for i in uptime_value_list:
+		if "year" in i:
+			y_sec = int(i.split(" ")[0]) * 31449600
+		elif "week" in i:
+			w_sec = int(i.split(" ")[0]) * 604800
+		elif "day" in i:
+			d_sec = int(i.split(" ")[0]) * 86400
+		elif "hour" in i:
+			h_sec = int(i.split(" ")[0]) * 3600
+		elif "minute" in i:
+			m_sec = int(i.split(" ")[0]) * 60
+
+	uptime = y_sec + w_sec + d_sec + h_sec + m_sec
+
+	#Add uptime in seconds to the dictionary
+	sh_ver_dict["uptime"] = str(uptime)
+
+	#Add dict to the list of general information for each device
+	dev_ver_info.append(sh_ver_dict)
+
+	#Create a dictionary for topology generation
+	for each_dict in dev_cdp_list:
+		edge_tuple = (each_dict["host_id"], each_dict["nbr_id"])
+		neighborship_dict[edge_tuple] = (each_dict["nbr_iface"], each_dict["nbr_ip"])
 
 	#Close SSH session
 	ssh_client.close()
@@ -386,7 +535,7 @@ def create_ssh_threads(ssh_list):
 		th = threading.Thread(target = gather_info, args = (dev["ssh_client"], dev["shell"]))
 		th.start()
 		threads.append(th)
-		time.sleep(1)
+		time.sleep(2)
 
 	for th in threads:
 		th.join()
@@ -418,6 +567,135 @@ def write_cred_csv():
 	print "* You can open it using Microsoft Excel"
 	print Fore.WHITE + Style.BRIGHT + "\n"
 
+def write_ver_info():
+	"""Write general information for each device to the file results/dev_general.txt"""
+
+	filename = r"./results/dev_general.txt"
+
+	if not os.path.exists(os.path.dirname(filename)):
+		try:
+			os.makedirs(os.path.dirname(filename))
+		except OSError as err:
+			print Fore.RED + Style.BRIGHT + "\n* Error: %s" % str(err)
+			sys.exit()
+
+	output_file = open(filename, "w")
+
+	for host in dev_ver_info:
+		print >>output_file, "############################### General information for the device: %s ###############################" % host["hostname"]
+		print >>output_file, "System type: %s" % host["sys_type"]
+		print >>output_file, "Hardware platform: %s" % host["hard_platform"]
+		print >>output_file, "Software name: %s" % host["soft_name"]
+		print >>output_file, "Software version: %s" % host["soft_ver"]
+		print >>output_file, "Image file: %s" % host["image"]
+		print >>output_file, "Processor type: %s" % host["proc_type"]
+		print >>output_file, "Processor frequency: %s MHz" % host["proc_freq"]
+		print >>output_file, "Main (RAM) memory: %s Kbytes" % host["ram_mem"]
+		print >>output_file, "Shared memory: %s Kbytes" % host["shared_mem"]
+		print >>output_file, "NVRAM: %s Kbytes" % host["nvram"]
+		print >>output_file, "Configuration register: %s" % host["conf_reg"]
+		#print >>output_file, "\nEoL information for the software: Cisco %s %s" % (host["hard_platform"], host["soft_ver"])
+		#print >>output_file, "\tEnd of Sales Date(EoS): %s" % host["eos"]
+		#print >>output_file, "\tLast day of Support: %s" % host["last_day_of_sup"]
+		#print >>output_file, "\tEnd of S/W Maintainence Releases Date(EoL): %s\n" % host["eol"]
+
+	output_file.close()
+	print Fore.BLUE + Style.BRIGHT + "\n* General information for each device is saved to " + Fore.YELLOW + filename
+	print Fore.WHITE + Style.BRIGHT + "\n"
+
+def write_iface_info():
+	"""Write interface information for each device to the file results/dev_interfaces.txt"""
+
+	filename = r"./results/dev_interfaces.txt"
+
+	if not os.path.exists(os.path.dirname(filename)):
+		try:
+			os.makedirs(os.path.dirname(filename))
+		except OSError as err:
+			print Fore.RED + Style.BRIGHT + "\n* Error: %s" % str(err)
+			sys.exit()
+
+
+	output_file = open(filename, "w")
+
+	for host in dev_iface_info.keys():
+		print >>output_file, "############################### Interface information for the device: %s ###############################" % host
+
+		#["iface", "phy_st", "prot_st", "description", "ip_addr", "mtu", "bandwidth"]
+		for each_dict in dev_iface_info[host]:
+			print >>output_file, "----- %s -----" % each_dict["iface"]
+			if each_dict["ip_addr"] == "":
+				print >>output_file, "\tIP address: unassigned"
+			else:
+				print >>output_file, "\tIP address: %s" % each_dict["ip_addr"]
+			print >>output_file, "\tOperational state: %s" % each_dict["phy_st"]
+			print >>output_file, "\tProtocol state: %s" % each_dict["prot_st"]
+			print >>output_file, "\tDescription: %s" % each_dict["description"]
+			print >>output_file, "\tMTU: %s bytes" % each_dict["mtu"]
+			print >>output_file, "\tBandwidth: %s Kbit/sec" % each_dict["bandwidth"]
+
+	output_file.close()
+	print Fore.BLUE + Style.BRIGHT + "\n* Interface information for each device is saved to " + Fore.YELLOW + filename
+	print Fore.WHITE + Style.BRIGHT + "\n"
+
+def write_module_info():
+	"""Write information about modules for each device to the file results/dev_modules.txt"""
+
+	filename = r"./results/dev_modules.txt"
+
+	if not os.path.exists(os.path.dirname(filename)):
+		try:
+			os.makedirs(os.path.dirname(filename))
+		except OSError as err:
+			print Fore.RED + Style.BRIGHT + "\n* Error: %s" % str(err)
+			sys.exit()
+
+	output_file = open(filename, "w")
+
+	for host in dev_module_info.keys():
+		print >>output_file, "############################### Module information for the device: %s ###############################\n" % host
+
+		print >>output_file, "******************** ADAPTERS ********************\n"
+		for each_dict in dev_module_info[host][0]:
+			print >>output_file, "----- Slot %s -----\n" % each_dict["slot_no"]
+			print >>output_file, "\tModule: %s\n" % each_dict["module_name"]
+			print >>output_file, "\tStatus: %s\n" % each_dict["status"]
+			print >>output_file, "\tPort number: %s\n" % each_dict["port_no"]
+			print >>output_file, "\tPort adapter insertion time: %s ago\n" % each_dict["insert_time"]
+			print >>output_file, "\tSerial number: %s\n" % each_dict["serial_no"]
+			print >>output_file, "\tHardware revision: %s\n" % each_dict["hard_rev"]
+			print >>output_file, "\tPID: %s\n" % each_dict["pid"]
+
+		print >>output_file, "******************** WICS ********************\n"
+		for each_dict in dev_module_info[host][1]:
+			print >>output_file, "----- Slot %s -----\n" % each_dict["slot_no"]
+			print >>output_file, "\tModule: Serial %s\n" % each_dict["module_name"]
+			print >>output_file, "\tStatus: analyzed\n"
+			print >>output_file, "\tSerial number: %s\n" % each_dict["serial_no"]
+			print >>output_file, "\tHardware revision: %s\n" % each_dict["hard_rev"]
+			print >>output_file, "\tPID: %s\n" % each_dict["pid"]
+
+	output_file.close()
+	print Fore.BLUE + Style.BRIGHT + "\n* Module information for each device is saved to " + Fore.YELLOW + filename
+	print Fore.WHITE + Style.BRIGHT + "\n"
+
+def draw_topology():
+	"""Draw network topology"""
+
+	print Fore.CYAN + Style.BRIGHT + "\n* Generating network topology..."
+	print Fore.CYAN + Style.BRIGHT + "\n* You can save it as a .png file\n" + Fore.BLUE + Style.BRIGHT
+
+	#Drawing the topology using the list of neighborships
+	G = nx.Graph()
+	G.add_edges_from(neighborship_dict.keys())
+	pos = nx.spring_layout(G, k = float(len(dev_manage_info)), iterations = 70)
+	nx.draw_networkx_labels(G, pos, font_size = 9, font_family = "sans-serif", font_weight = "bold")
+	nx.draw_networkx_edges(G, pos, width = 4, alpha = 0.4, edge_color = 'black')
+	nx.draw_networkx_edge_labels(G, pos, neighborship_dict, label_pos = 0.3, font_size = 6)
+	nx.draw(G, pos, node_size = 700, with_labels = True)
+	matp.show()
+
+
 #Coffee cup
 #P.S Just a funny stuff
 coffee = r"""                                /\
@@ -442,6 +720,8 @@ coffee = r"""                                /\
                       ***************** 
                          ***********
 		"""
+
+
 
 if __name__ == "__main__":
 	try:
@@ -502,17 +782,18 @@ if __name__ == "__main__":
 				open_ssh_conn(ip, pass_list)
 		
 		print Fore.GREEN + Style.BRIGHT + "\n* Done!"
-		pprint(dev_manage_info)
-		print "\n"
-
+		
+		#Create ssh threads
 		create_ssh_threads(dev_manage_info)
-		pprint(dev_manage_info)
 
+		#Writing all the information to appropriate files
+		write_cred_csv()
+		write_module_info()
+		write_iface_info()
+		write_ver_info()
 
-		#print "\n Device  credentials: "
-		#pprint(dev_manage_info)
-
-		#write_cred_csv()
+		#Draw network topology
+		draw_topology()
 
 		#Deinitialise colorama
 		deinit()
