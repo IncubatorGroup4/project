@@ -23,6 +23,13 @@ except ImportError:
 init()
 
 try:
+	import requests
+except ImportError:
+	print Fore.RED + Style.BRIGHT + "* Module" + Fore.YELLOW + Style.BRIGHT + " requests" + Fore.RED + Style.BRIGHT + " needs to be installed on your system."
+	print "* Download it from: " + Fore.GREEN + Style.BRIGHT + "https://pypi.python.org/pypi/requests\n" + Fore.WHITE + Style.BRIGHT + "\n"
+	sys.exit()
+
+try:
 	import netifaces
 except ImportError:
 	print Fore.RED + Style.BRIGHT + "* Module" + Fore.YELLOW + Style.BRIGHT + " netifaces" + Fore.RED + Style.BRIGHT + " needs to be installed on your system."
@@ -95,6 +102,8 @@ neighborship_dict = {}
 
 #Interface information for each device (dict(key = hostname) of lists of dictionaries(each interface))
 dev_iface_info = {}
+
+eox_info = {}
 
 
 def ip_is_valid(file):
@@ -334,15 +343,15 @@ def open_ssh_conn(ip, pswd_list):
 			#print Fore.RED + Style.BRIGHT + "\n* Please check the file."
 			#print Fore.WHITE + Style.BRIGHT + "\n"
 			continue
-		except paramiko.ssh_exception.NoValidConnectionsError:
-			ssh_check = False
-			print Fore.RED + Style.BRIGHT + "\n Too many vty connections to device --> " + ip
-			print Fore.WHITE + Style.BRIGHT + "\n"
-			break
+		#except paramiko.ssh_exception.NoValidConnectionsError:
+			#ssh_check = False
+			#print Fore.RED + Style.BRIGHT + "\n Too many vty connections to device --> " + ip
+			#print Fore.WHITE + Style.BRIGHT + "\n"
+			#break
 		except socket.error as err:
 			ssh_check = False
 			print Fore.RED + Style.BRIGHT + "*\n Error: " + str(err)
-			print Fore.WHITE + Style.BRIGHT + "\n"
+			print "* Check if the RSA key is configured on the device!"
 			break
 
 	#Evaluate ssh_check flag
@@ -378,6 +387,7 @@ def open_ssh_conn(ip, pswd_list):
 	else:
 		print "\n* Password is not found for a device with ip  " + Fore.YELLOW + Style.BRIGHT + ip
 		print Fore.WHITE + Style.BRIGHT + "\n"
+		available_ips.remove(ip)
 
 def gather_info(ssh_client, conn):
 	"""Gather all the neccessary information for a device. Accepts paramiko.SSHClient() object"""
@@ -655,25 +665,54 @@ def write_module_info():
 	for host in dev_module_info.keys():
 		print >>output_file, "############################### Module information for the device: %s ###############################\n" % host
 
-		print >>output_file, "******************** ADAPTERS ********************\n"
+		print >>output_file, "******************** ADAPTERS ********************"
 		for each_dict in dev_module_info[host][0]:
-			print >>output_file, "----- Slot %s -----\n" % each_dict["slot_no"]
-			print >>output_file, "\tModule: %s\n" % each_dict["module_name"]
-			print >>output_file, "\tStatus: %s\n" % each_dict["status"]
-			print >>output_file, "\tPort number: %s\n" % each_dict["port_no"]
-			print >>output_file, "\tPort adapter insertion time: %s ago\n" % each_dict["insert_time"]
-			print >>output_file, "\tSerial number: %s\n" % each_dict["serial_no"]
-			print >>output_file, "\tHardware revision: %s\n" % each_dict["hard_rev"]
-			print >>output_file, "\tPID: %s\n" % each_dict["pid"]
+			print >>output_file, "----- Slot %s -----" % each_dict["slot_no"]
+			print >>output_file, "\tModule: %s" % each_dict["module_name"]
+			print >>output_file, "\tStatus: %s" % each_dict["status"]
+			print >>output_file, "\tPort adapter insertion time: %s ago" % each_dict["insert_time"]
+			print >>output_file, "\tSerial number: %s" % each_dict["serial_no"]
+			print >>output_file, "\tHardware revision: %s" % each_dict["hard_rev"]
+			print >>output_file, "\tPID: %s" % each_dict["pid"]
 
-		print >>output_file, "******************** WICS ********************\n"
+			if eox_info[each_dict["pid"]]["EndOfSaleDate"] == u"" or eox_info[each_dict["pid"]]["EndOfSaleDate"] == u" ":
+				print >>output_file, "\tEnd of Sale Date: No information available"
+			else:
+				print >>output_file, "\tEnd of Sale Date: %s" % eox_info[each_dict["pid"]]["EndOfSaleDate"]
+
+			if eox_info[each_dict["pid"]]["EndOfSWMaintenanceReleases"] == u"" or eox_info[each_dict["pid"]]["EndOfSWMaintenanceReleases"] == u" ":
+				print >>output_file, "\tEnd of SW Maintenance Releases: No information available"
+			else:
+				print >>output_file, "\tEnd of SW Maintenance Releases: %s" % eox_info[each_dict["pid"]]["EndOfSWMaintenanceReleases"]
+
+			if eox_info[each_dict["pid"]]["LastDateOfSupport"] == u"" or eox_info[each_dict["pid"]]["LastDateOfSupport"] == u" ":
+				print >>output_file, "\tLast Date of Support: No information available\n"
+			else:
+				print >>output_file, "\tLast Date of Support: %s\n" % eox_info[each_dict["pid"]]["LastDateOfSupport"]
+
+		print >>output_file, "******************** WICS ********************"
 		for each_dict in dev_module_info[host][1]:
-			print >>output_file, "----- Slot %s -----\n" % each_dict["slot_no"]
-			print >>output_file, "\tModule: Serial %s\n" % each_dict["module_name"]
-			print >>output_file, "\tStatus: analyzed\n"
-			print >>output_file, "\tSerial number: %s\n" % each_dict["serial_no"]
-			print >>output_file, "\tHardware revision: %s\n" % each_dict["hard_rev"]
-			print >>output_file, "\tPID: %s\n" % each_dict["pid"]
+			print >>output_file, "----- Slot %s -----" % each_dict["slot_no"]
+			print >>output_file, "\tModule: Serial %s" % each_dict["module_name"]
+			print >>output_file, "\tStatus: analyzed"
+			print >>output_file, "\tSerial number: %s" % each_dict["serial_no"]
+			print >>output_file, "\tHardware revision: %s" % each_dict["hard_rev"]
+			print >>output_file, "\tPID: %s" % each_dict["pid"]
+
+			if eox_info[each_dict["serial_no"]]["EndOfSaleDate"] == u"" or eox_info[each_dict["serial_no"]]["EndOfSaleDate"] == u" ":
+				print >>output_file, "\tEnd of Sale Date: No information available"
+			else:
+				print >>output_file, "\tEnd of Sale Date: %s" % eox_info[each_dict["serial_no"]]["EndOfSaleDate"]
+
+			if eox_info[each_dict["serial_no"]]["EndOfSWMaintenanceReleases"] == u"" or eox_info[each_dict["serial_no"]]["EndOfSWMaintenanceReleases"] == u" ":
+				print >>output_file, "\tEnd of SW Maintenance Releases: No information available"
+			else:
+				print >>output_file, "\tEnd of SW Maintenance Releases: %s" % eox_info[each_dict["serial_no"]]["EndOfSWMaintenanceReleases"]
+
+			if eox_info[each_dict["serial_no"]]["LastDateOfSupport"] == u"" or eox_info[each_dict["serial_no"]]["LastDateOfSupport"] == u" ":
+				print >>output_file, "\tLast Date of Support: No information available\n"
+			else:
+				print >>output_file, "\tLast Date of Support: %s\n" % eox_info[each_dict["serial_no"]]["LastDateOfSupport"]
 
 	output_file.close()
 	print Fore.BLUE + Style.BRIGHT + "\n* Module information for each device is saved to " + Fore.YELLOW + filename
@@ -785,6 +824,43 @@ if __name__ == "__main__":
 		
 		#Create ssh threads
 		create_ssh_threads(dev_manage_info)
+
+		pid_set = set()
+		sn_set = set()
+		for host in dev_module_info.keys():
+			for each_dict in dev_module_info[host][0]:
+				pid_set.add(each_dict["pid"])
+			for each_dict in dev_module_info[host][1]:
+				sn_set.add(each_dict["serial_no"])
+
+		pid_sn_dict = {"adapters": pid_set, "wics": sn_set}
+		#pprint(pid_sn_dict)
+
+		
+		token_url = "https://cloudsso.cisco.com/as/token.oauth2"
+		client_id = "wzxkkg83w8bgjp6kqg8p2eex"
+		client_secret = "GCY7NPUTMSMFpgtQCecpAdFj"
+
+		payload = {"grant_type":"client_credentials"}
+		token = requests.post(token_url, data = payload, auth = (client_id, client_secret)).json()["access_token"]
+		#print token
+
+		eox_pid_url = "https://api.cisco.com/supporttools/eox/rest/5/EOXByProductID/1/"
+		eox_sn_url = "https://api.cisco.com/supporttools/eox/rest/5/EOXBySerialNumber/1/"
+
+		for item in pid_sn_dict["adapters"]:
+			resp = requests.get(eox_pid_url + item + "?responseencoding=json", headers = {"Authorization": "Bearer %s" % token}).json()
+			eox_info[item] = {"EndOfSaleDate": resp["EOXRecord"][0]["EndOfSaleDate"]["value"],
+							"EndOfSWMaintenanceReleases": resp["EOXRecord"][0]["EndOfSWMaintenanceReleases"]["value"],
+							"LastDateOfSupport": resp["EOXRecord"][0]["LastDateOfSupport"]["value"]}
+
+		for item in pid_sn_dict["wics"]:
+			resp = requests.get(eox_sn_url + item + "?responseencoding=json", headers = {"Authorization": "Bearer %s" % token}).json()
+			eox_info[item] = {"EndOfSaleDate": resp["EOXRecord"][0]["EndOfSaleDate"]["value"],
+							"EndOfSWMaintenanceReleases": resp["EOXRecord"][0]["EndOfSWMaintenanceReleases"]["value"],
+							"LastDateOfSupport": resp["EOXRecord"][0]["LastDateOfSupport"]["value"]}
+
+		#pprint(eox_info)
 
 		#Writing all the information to appropriate files
 		write_cred_csv()
