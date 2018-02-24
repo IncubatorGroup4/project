@@ -105,6 +105,8 @@ dev_iface_info = {}
 
 eox_info = {}
 
+eox_soft = {}
+
 
 def ip_is_valid(file):
 	"""Checks if all ip addresses in the file are valid. 
@@ -604,10 +606,10 @@ def write_ver_info():
 		print >>output_file, "Shared memory: %s Kbytes" % host["shared_mem"]
 		print >>output_file, "NVRAM: %s Kbytes" % host["nvram"]
 		print >>output_file, "Configuration register: %s" % host["conf_reg"]
-		#print >>output_file, "\nEoL information for the software: Cisco %s %s" % (host["hard_platform"], host["soft_ver"])
-		#print >>output_file, "\tEnd of Sales Date(EoS): %s" % host["eos"]
-		#print >>output_file, "\tLast day of Support: %s" % host["last_day_of_sup"]
-		#print >>output_file, "\tEnd of S/W Maintainence Releases Date(EoL): %s\n" % host["eol"]
+		#print >>output_file, "\nEoL information for the software release: %s" % host["soft_ver"]
+		#print >>output_file, "\tEnd of Sale Date: %s" % eox_soft[host["soft_ver"]]["EndOfSaleDate"]
+		#print >>output_file, "\tLast day of Support: %s" % eox_soft[host["soft_ver"]]["LastDateOfSupport"]
+		#print >>output_file, "\tEnd of S/W Maintainence Releases Date: %s\n" % eox_soft[host["soft_ver"]]["EndOfSWMaintenanceReleases"]
 
 	output_file.close()
 	print Fore.BLUE + Style.BRIGHT + "\n* General information for each device is saved to " + Fore.YELLOW + filename
@@ -702,17 +704,17 @@ def write_module_info():
 			if eox_info[each_dict["serial_no"]]["EndOfSaleDate"] == u"" or eox_info[each_dict["serial_no"]]["EndOfSaleDate"] == u" ":
 				print >>output_file, "\tEnd of Sale Date: No information available"
 			else:
-				print >>output_file, "\tEnd of Sale Date: %s" % eox_info[each_dict["serial_no"]]["EndOfSaleDate"]
+				print >>output_file, "\tEnd of Sale Date: %s (YYYY-MM-DD)" % eox_info[each_dict["serial_no"]]["EndOfSaleDate"]
 
 			if eox_info[each_dict["serial_no"]]["EndOfSWMaintenanceReleases"] == u"" or eox_info[each_dict["serial_no"]]["EndOfSWMaintenanceReleases"] == u" ":
 				print >>output_file, "\tEnd of SW Maintenance Releases: No information available"
 			else:
-				print >>output_file, "\tEnd of SW Maintenance Releases: %s" % eox_info[each_dict["serial_no"]]["EndOfSWMaintenanceReleases"]
+				print >>output_file, "\tEnd of SW Maintenance Releases: %s (YYYY-MM-DD)" % eox_info[each_dict["serial_no"]]["EndOfSWMaintenanceReleases"]
 
 			if eox_info[each_dict["serial_no"]]["LastDateOfSupport"] == u"" or eox_info[each_dict["serial_no"]]["LastDateOfSupport"] == u" ":
 				print >>output_file, "\tLast Date of Support: No information available\n"
 			else:
-				print >>output_file, "\tLast Date of Support: %s\n" % eox_info[each_dict["serial_no"]]["LastDateOfSupport"]
+				print >>output_file, "\tLast Date of Support: %s (YYYY-MM-DD)\n" % eox_info[each_dict["serial_no"]]["LastDateOfSupport"]
 
 	output_file.close()
 	print Fore.BLUE + Style.BRIGHT + "\n* Module information for each device is saved to " + Fore.YELLOW + filename
@@ -836,6 +838,9 @@ if __name__ == "__main__":
 		pid_sn_dict = {"adapters": pid_set, "wics": sn_set}
 		#pprint(pid_sn_dict)
 
+		#soft_set = set()
+		#for host in dev_ver_info:
+			#soft_set.add((host["sys_type"], host["soft_ver"]))
 		
 		token_url = "https://cloudsso.cisco.com/as/token.oauth2"
 		client_id = "wzxkkg83w8bgjp6kqg8p2eex"
@@ -847,6 +852,7 @@ if __name__ == "__main__":
 
 		eox_pid_url = "https://api.cisco.com/supporttools/eox/rest/5/EOXByProductID/1/"
 		eox_sn_url = "https://api.cisco.com/supporttools/eox/rest/5/EOXBySerialNumber/1/"
+		#soft_url = "https://api.cisco.com/supporttools/eox/rest/5/EOXBySWReleaseString/1/?"
 
 		for item in pid_sn_dict["adapters"]:
 			resp = requests.get(eox_pid_url + item + "?responseencoding=json", headers = {"Authorization": "Bearer %s" % token}).json()
@@ -860,7 +866,13 @@ if __name__ == "__main__":
 							"EndOfSWMaintenanceReleases": resp["EOXRecord"][0]["EndOfSWMaintenanceReleases"]["value"],
 							"LastDateOfSupport": resp["EOXRecord"][0]["LastDateOfSupport"]["value"]}
 
-		#pprint(eox_info)
+		"""for item in soft_set:
+			resp = requests.get(soft_url + "input1=%s,%s" % (item[1], item[0]), headers = {"Authorization": "Bearer %s" % token}).json()
+			eox_soft[item[1]] = {"EndOfSaleDate": resp["EOXRecord"][0]["EndOfSaleDate"]["value"],
+							"EndOfSWMaintenanceReleases": resp["EOXRecord"][0]["EndOfSWMaintenanceReleases"]["value"],
+							"LastDateOfSupport": resp["EOXRecord"][0]["LastDateOfSupport"]["value"]}"""
+
+		#pprint(eox_soft)
 
 		#Writing all the information to appropriate files
 		write_cred_csv()
