@@ -680,17 +680,17 @@ def write_module_info():
 			if eox_info[each_dict["pid"]]["EndOfSaleDate"] == u"" or eox_info[each_dict["pid"]]["EndOfSaleDate"] == u" ":
 				print >>output_file, "\tEnd of Sale Date: No information available"
 			else:
-				print >>output_file, "\tEnd of Sale Date: %s" % eox_info[each_dict["pid"]]["EndOfSaleDate"]
+				print >>output_file, "\tEnd of Sale Date: %s (YYYY-MM-DD)" % eox_info[each_dict["pid"]]["EndOfSaleDate"]
 
 			if eox_info[each_dict["pid"]]["EndOfSWMaintenanceReleases"] == u"" or eox_info[each_dict["pid"]]["EndOfSWMaintenanceReleases"] == u" ":
 				print >>output_file, "\tEnd of SW Maintenance Releases: No information available"
 			else:
-				print >>output_file, "\tEnd of SW Maintenance Releases: %s" % eox_info[each_dict["pid"]]["EndOfSWMaintenanceReleases"]
+				print >>output_file, "\tEnd of SW Maintenance Releases: %s (YYYY-MM-DD)" % eox_info[each_dict["pid"]]["EndOfSWMaintenanceReleases"]
 
 			if eox_info[each_dict["pid"]]["LastDateOfSupport"] == u"" or eox_info[each_dict["pid"]]["LastDateOfSupport"] == u" ":
 				print >>output_file, "\tLast Date of Support: No information available\n"
 			else:
-				print >>output_file, "\tLast Date of Support: %s\n" % eox_info[each_dict["pid"]]["LastDateOfSupport"]
+				print >>output_file, "\tLast Date of Support: %s (YYYY-MM-DD)\n" % eox_info[each_dict["pid"]]["LastDateOfSupport"]
 
 		print >>output_file, "******************** WICS ********************"
 		for each_dict in dev_module_info[host][1]:
@@ -729,7 +729,7 @@ def draw_topology():
 	#Drawing the topology using the list of neighborships
 	G = nx.Graph()
 	G.add_edges_from(neighborship_dict.keys())
-	pos = nx.spring_layout(G, k = float(len(dev_manage_info)), iterations = 70)
+	pos = nx.spring_layout(G, k = 0.5, iterations = 70)
 	nx.draw_networkx_labels(G, pos, font_size = 9, font_family = "sans-serif", font_weight = "bold")
 	nx.draw_networkx_edges(G, pos, width = 4, alpha = 0.4, edge_color = 'black')
 	nx.draw_networkx_edge_labels(G, pos, neighborship_dict, label_pos = 0.3, font_size = 6)
