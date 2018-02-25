@@ -822,7 +822,7 @@ if __name__ == "__main__":
 				ip = available_ips[0]
 				open_ssh_conn(ip, pass_list)
 		
-		print Fore.GREEN + Style.BRIGHT + "\n* Done!"
+		#print Fore.GREEN + Style.BRIGHT + "\n* Done!"
 		
 		#Create ssh threads
 		create_ssh_threads(dev_manage_info)
